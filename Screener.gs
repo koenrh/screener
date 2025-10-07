@@ -2,23 +2,49 @@ const SCREENER_LABEL_NAME = "Screener";
 const BATCH_SIZE = 100;
 const ORIGINAL_FROM_HEADER_NAME = "X-Original-From";
 const SOURCE_TYPE_CONTACT = "READ_SOURCE_TYPE_CONTACT";
+const CACHE_DURATION_SECONDS = 25 * 60; // 25 minutes
 
-function processMessages() {
+function getUnscreenedThreads() {
+  try {
+    return GmailApp.search(`label:${SCREENER_LABEL_NAME} -in:inbox`, 0, BATCH_SIZE);
+  } catch(error) {
+    Logger.log(`Error getting unscreened threads: ${error.message}`);
+    throw error;
+  }
+}
+
+function processThreads() {
   const screenerLabel = GmailApp.getUserLabelByName(SCREENER_LABEL_NAME) || GmailApp.createLabel(SCREENER_LABEL_NAME);
-  const threads = GmailApp.search(`label:${SCREENER_LABEL_NAME} -in:inbox`, 0, BATCH_SIZE);
+  const threads = getUnscreenedThreads();
+
+  if (!threads || threads.length === 0) {
+    Logger.log("No unscreened threads found");
+    return;
+  }
 
   threads.forEach((thread) => {
-    const firstThread = thread.getMessages()[0];
+    const messages = thread.getMessages();
+
+    if (!messages || messages.length === 0) {
+      Logger.log(`No messages found for thread ${thread.getId()}`);
+      return;
+    }
+
+    const firstMessage = messages[0];
 
     // For messages sent to a Google Group, we need to work with the 'original from'
-    const fromField = firstThread.getHeader(ORIGINAL_FROM_HEADER_NAME) || firstThread.getFrom();
+    const fromField = firstMessage.getHeader(ORIGINAL_FROM_HEADER_NAME) || firstMessage.getFrom();
     const sender = extractEmail(fromField);
+
+    if (!sender) {
+      Logger.log(`Could not extract email from 'From' field: ${fromField}`);
+      return;
+    }
 
     if (isContact(sender)) {
       Logger.log(`${sender} is a contact, moving thread to inbox`);
 
       thread.removeLabel(screenerLabel);
-      thread.markUnread();
       thread.moveToInbox();
     }
   });
@@ -26,27 +52,66 @@ function processMessages() {
   Logger.log(`Processed ${threads.length} threads`);
 }
 
+function getContactsForEmail(email) {
+  try {
+    const searchResponse = People.People.searchContacts({
+      query: email,
+      readMask: "emailAddresses",
+      sources: [SOURCE_TYPE_CONTACT],
+    });
+
+    return searchResponse.results || [];
+
+  } catch (error) {
+    if (error.message.startsWith("Exception:") && error.message.includes("Empty response")) {
+      return [];
+
+    } else {
+      Logger.log(`Error getting contacts for ${email}: ${error.message}`);
+      throw error;
+    }
+  }
+}
+
+function extractEmail(fromField) {
+  if (!fromField || typeof fromField !== "string") {
+    Logger.log(`Invalid 'From' field: ${fromField}`);
+    return null;
+  }
+
+  const matches = fromField.match(/<([^<>]+)>/);
+  return matches ? matches[1] : fromField.trim();
+}
+
 function isContact(email) {
-  const searchResponse = People.People.searchContacts({
-    query: email,
-    readMask: "emailAddresses",
-    sources: [SOURCE_TYPE_CONTACT],
-  });
+  if (!email || typeof email !== "string") {
+    Logger.log(`Invalid email: ${email}`);
+    return false;
+  }
 
-  const contacts = searchResponse.results || [];
+  // Cache lookups for a bit to avoid People API rate limits
+  const cacheKey = email.toLowerCase();
+  const cached = CacheService.getUserCache().get(cacheKey);
 
-  if (contacts.length === 0) {
-    Logger.log(`No contacts found for: ${email}`);
+  if (cached) {
+    Logger.log(`Cached result for ${email}: ${cached}`);
+    return cached === "true";
+  }
+
+  Logger.log(`Checking if ${email} is a contact`);
+  const contacts = getContactsForEmail(email);
+
+  if (!contacts || contacts.length === 0) {
+    Logger.log(`No contacts found for ${email}`);
+    CacheService.getUserCache().put(cacheKey, "false", CACHE_DURATION_SECONDS);
     return false;
   }
 
   const contact = contacts[0];
   const contactEmails = contact.person.emailAddresses || [];
+  const isEmailInContacts = contactEmails.some((e) => email.toLowerCase() === e.value.toLowerCase());
 
-  return contactEmails.some((e) => email.toLowerCase() === e.value.toLowerCase());
-}
+  CacheService.getUserCache().put(cacheKey, isEmailInContacts.toString(), CACHE_DURATION_SECONDS);
 
-function extractEmail(fromField) {
-  var matches = fromField.match(/<(.+)>/);
-  return matches ? matches[1] : fromField;
+  return isEmailInContacts;
 }
