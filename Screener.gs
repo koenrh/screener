@@ -22,6 +22,8 @@ function processThreads() {
     return;
   }
 
+  let movedThreads = 0;
+
   threads.forEach((thread) => {
     const messages = thread.getMessages();
 
@@ -44,12 +46,14 @@ function processThreads() {
     if (isContact(sender)) {
       Logger.log(`${sender} is a contact, moving thread to inbox`);
 
+      movedThreads++;
+
       thread.removeLabel(screenerLabel);
       thread.moveToInbox();
     }
   });
 
-  Logger.log(`Processed ${threads.length} threads`);
+  Logger.log(`Screened ${threads.length} threads, moved ${movedThreads} threads to inbox`);
 }
 
 function getContactsForEmail(email) {
