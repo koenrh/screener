@@ -100,11 +100,7 @@ function getContactsForEmail(email) {
 }
 
 function extractEmail(fromField) {
-  if (!fromField || typeof fromField !== "string") {
-    Logger.log(`Invalid 'From' field: ${fromField}`);
-    return null;
-  }
-
+  if (!fromField || typeof fromField !== "string") return "";
   const matches = fromField.match(/<([^<>]+)>/);
   return matches ? matches[1] : fromField.trim();
 }
