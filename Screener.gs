@@ -38,12 +38,34 @@ function processThreads() {
     const fromField = firstMessage.getHeader(ORIGINAL_FROM_HEADER_NAME) || firstMessage.getFrom();
     const sender = extractEmail(fromField);
 
-    if (!sender) {
-      Logger.log(`Could not extract email from 'From' field: ${fromField}`);
-      return;
+    let filterMatched = false;
+
+    if (filters) {
+      for (const filter of filters) {
+        if (matchesFilter(filter, firstMessage)) {
+          Logger.log(`Filter matched for: '${firstMessage.getSubject()}'`);
+
+          if (filter.forwardTo) {
+            Logger.log(`Forwarding to: '${filter.forwardTo}'`);
+            firstMessage.forward(filter.forwardTo);
+          }
+          if (filter.shouldMarkAsRead) {
+            Logger.log(`Marking thread as read`);
+            thread.markRead();
+          }
+          if (filter.shouldArchive) {
+            Logger.log("Moving thread to archive");
+            thread.moveToArchive();
+          }
+
+          thread.removeLabel(screenerLabel);
+          filterMatched = true;
+          break;
+        }
+      }
     }
 
-    if (isContact(sender)) {
+    if (!filterMatched && isContact(sender)) {
       Logger.log(`${sender} is a contact, moving thread to inbox`);
 
       movedThreads++;
