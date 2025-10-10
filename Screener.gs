@@ -99,10 +99,10 @@ function getContactsForEmail(email) {
   }
 }
 
-function extractEmail(fromField) {
-  if (!fromField || typeof fromField !== "string") return "";
-  const matches = fromField.match(/<([^<>]+)>/);
-  return matches ? matches[1] : fromField.trim();
+function extractEmail(addressField) {
+  if (!addressField || typeof addressField !== "string") return "";
+  const matches = addressField.match(/<([^<>]+)>/);
+  return matches ? matches[1] : addressField.trim();
 }
 
 function isContact(email) {
