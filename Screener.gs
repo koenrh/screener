@@ -89,7 +89,7 @@ function getContactsForEmail(email) {
     return searchResponse.results || [];
 
   } catch (error) {
-    if (error.message.startsWith("Exception:") && error.message.includes("Empty response")) {
+    if (error.message.includes("Empty response")) {
       return [];
 
     } else {
@@ -113,11 +113,18 @@ function isContact(email) {
 
   // Cache lookups for a bit to avoid People API rate limits
   const cacheKey = email.toLowerCase();
-  const cached = CacheService.getUserCache().get(cacheKey);
+  let cached = null;
 
-  if (cached) {
-    Logger.log(`Cached result for ${email}: ${cached}`);
-    return cached === "true";
+  try {
+    cached = CacheService.getUserCache().get(cacheKey);
+
+    if (cached) {
+      Logger.log(`Cached result for ${email}: ${cached}`);
+      return cached === "true";
+    }
+  } catch (error) {
+    Logger.log(`CacheService.get() error for ${email}: ${error.message}`);
+    throw error;
   }
 
   Logger.log(`Checking if ${email} is a contact`);
@@ -125,7 +132,14 @@ function isContact(email) {
 
   if (!contacts || contacts.length === 0) {
     Logger.log(`No contacts found for ${email}`);
-    CacheService.getUserCache().put(cacheKey, "false", CACHE_DURATION_SECONDS);
+
+    try {
+      CacheService.getUserCache().put(cacheKey, "false", CACHE_DURATION_SECONDS);
+    } catch (error) {
+      Logger.log(`CacheService.put() error for ${email}: ${error.message}`);
+      throw error;
+    }
+
     return false;
   }
 
@@ -133,7 +147,12 @@ function isContact(email) {
   const contactEmails = contact.person.emailAddresses || [];
   const isEmailInContacts = contactEmails.some((e) => email.toLowerCase() === e.value.toLowerCase());
 
-  CacheService.getUserCache().put(cacheKey, isEmailInContacts.toString(), CACHE_DURATION_SECONDS);
+  try {
+    CacheService.getUserCache().put(cacheKey, isEmailInContacts.toString(), CACHE_DURATION_SECONDS);
+  } catch (error) {
+    Logger.log(`CacheService.put() error for ${email}: ${error.message}`);
+    throw error;
+  }
 
   return isEmailInContacts;
 }
