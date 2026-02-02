@@ -65,6 +65,7 @@ function processThreads() {
             thread.moveToArchive();
           }
 
+          Logger.log(`Removing '${SCREENER_LABEL_NAME}' label`);
           thread.removeLabel(screenerLabel);
           filterMatched = true;
           break;
