@@ -1,6 +1,7 @@
 const SCREENER_LABEL_NAME = "Screener";
 const BATCH_SIZE = 100;
 const ORIGINAL_FROM_HEADER_NAME = "X-Original-From";
+const IN_REPLY_TO_HEADER_NAME = "In-Reply-To";
 const SOURCE_TYPE_CONTACT = "READ_SOURCE_TYPE_CONTACT";
 const CACHE_DURATION_SECONDS = 25 * 60; // 25 minutes
 
@@ -26,13 +27,15 @@ function processThreads() {
 
   threads.forEach((thread) => {
     const messages = thread.getMessages();
+    const messageCount = thread.getMessageCount();
 
-    if (!messages || messages.length === 0) {
+    if (!messages || messageCount === 0) {
       Logger.log(`No messages found for thread ${thread.getId()}`);
       return;
     }
 
     const firstMessage = messages[0];
+    const lastMessage = messages[messageCount - 1];
 
     // For messages sent to a Google Group, we need to work with the 'original from'
     const fromField = firstMessage.getHeader(ORIGINAL_FROM_HEADER_NAME) || firstMessage.getFrom();
@@ -46,8 +49,12 @@ function processThreads() {
           Logger.log(`Filter matched for: '${firstMessage.getSubject()}'`);
 
           if (filter.forwardTo) {
-            Logger.log(`Forwarding to: '${filter.forwardTo}'`);
-            firstMessage.forward(filter.forwardTo);
+            if (lastMessage.getHeader(IN_REPLY_TO_HEADER_NAME)) {
+              Logger.log(`'${IN_REPLY_TO_HEADER_NAME}' header found, not forwarding to prevent loop`)
+            } else {
+              Logger.log(`Forwarding to: '${filter.forwardTo}'`);
+              firstMessage.forward(filter.forwardTo);
+            }
           }
           if (filter.shouldMarkAsRead) {
             Logger.log(`Marking thread as read`);
