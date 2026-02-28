@@ -42,10 +42,15 @@ function processThreads() {
     return;
   }
 
+  const allMessages = withRetry(
+    () => GmailApp.getMessagesForThreads(threads),
+    "getMessagesForThreads"
+  );
+
   let movedThreads = 0;
 
-  threads.forEach((thread) => {
-    const messages = thread.getMessages();
+  threads.forEach((thread, i) => {
+    const messages = allMessages[i];
     const messageCount = thread.getMessageCount();
 
     if (!messages || messageCount === 0) {
