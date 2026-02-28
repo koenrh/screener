@@ -29,6 +29,10 @@ const filters = [
 ]
 
 function matchesFilter(filter, message) {
+  if (!filter.fromEmail && !filter.toName && !filter.subject && !filter.headers) {
+    return false;
+  }
+
   const toField = message.getTo();
   const fromField = message.getHeader(ORIGINAL_FROM_HEADER_NAME) || message.getFrom();
   const fromEmail = extractEmail(fromField);
