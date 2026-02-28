@@ -30,6 +30,58 @@ function getUnscreenedThreads() {
   );
 }
 
+function processThread(thread, messages, screenerLabel) {
+  if (!messages || thread.getMessageCount() === 0) {
+    Logger.log(`No messages found for thread ${thread.getId()}`);
+    return false;
+  }
+
+  const firstMessage = messages[0];
+  const lastMessage = messages[messages.length - 1];
+
+  // For messages sent to a Google Group, we need to work with the 'original from'
+  const fromField = firstMessage.getHeader(ORIGINAL_FROM_HEADER_NAME) || firstMessage.getFrom();
+  const sender = extractEmail(fromField);
+
+  if (filters) {
+    for (const filter of filters) {
+      if (matchesFilter(filter, firstMessage)) {
+        Logger.log(`Filter matched for: '${firstMessage.getSubject()}'`);
+
+        if (filter.forwardTo) {
+          if (lastMessage.getHeader(IN_REPLY_TO_HEADER_NAME)) {
+            Logger.log(`'${IN_REPLY_TO_HEADER_NAME}' header found, not forwarding to prevent loop`)
+          } else {
+            Logger.log(`Forwarding to: '${filter.forwardTo}'`);
+            firstMessage.forward(filter.forwardTo);
+          }
+        }
+        if (filter.shouldMarkAsRead) {
+          Logger.log(`Marking thread as read`);
+          thread.markRead();
+        }
+        if (filter.shouldArchive) {
+          Logger.log("Moving thread to archive");
+          thread.moveToArchive();
+        }
+
+        Logger.log(`Removing '${SCREENER_LABEL_NAME}' label`);
+        thread.removeLabel(screenerLabel);
+        return false;
+      }
+    }
+  }
+
+  if (isContact(sender)) {
+    Logger.log(`${sender} is a contact, moving thread to inbox`);
+    thread.removeLabel(screenerLabel);
+    thread.moveToInbox();
+    return true;
+  }
+
+  return false;
+}
+
 function processThreads() {
   const screenerLabel = withRetry(
     () => GmailApp.getUserLabelByName(SCREENER_LABEL_NAME) || GmailApp.createLabel(SCREENER_LABEL_NAME),
@@ -50,60 +102,12 @@ function processThreads() {
   let movedThreads = 0;
 
   threads.forEach((thread, i) => {
-    const messages = allMessages[i];
-    const messageCount = thread.getMessageCount();
-
-    if (!messages || messageCount === 0) {
-      Logger.log(`No messages found for thread ${thread.getId()}`);
-      return;
-    }
-
-    const firstMessage = messages[0];
-    const lastMessage = messages[messages.length - 1];
-
-    // For messages sent to a Google Group, we need to work with the 'original from'
-    const fromField = firstMessage.getHeader(ORIGINAL_FROM_HEADER_NAME) || firstMessage.getFrom();
-    const sender = extractEmail(fromField);
-
-    let filterMatched = false;
-
-    if (filters) {
-      for (const filter of filters) {
-        if (matchesFilter(filter, firstMessage)) {
-          Logger.log(`Filter matched for: '${firstMessage.getSubject()}'`);
-
-          if (filter.forwardTo) {
-            if (lastMessage.getHeader(IN_REPLY_TO_HEADER_NAME)) {
-              Logger.log(`'${IN_REPLY_TO_HEADER_NAME}' header found, not forwarding to prevent loop`)
-            } else {
-              Logger.log(`Forwarding to: '${filter.forwardTo}'`);
-              firstMessage.forward(filter.forwardTo);
-            }
-          }
-          if (filter.shouldMarkAsRead) {
-            Logger.log(`Marking thread as read`);
-            thread.markRead();
-          }
-          if (filter.shouldArchive) {
-            Logger.log("Moving thread to archive");
-            thread.moveToArchive();
-          }
-
-          Logger.log(`Removing '${SCREENER_LABEL_NAME}' label`);
-          thread.removeLabel(screenerLabel);
-          filterMatched = true;
-          break;
-        }
+    try {
+      if (processThread(thread, allMessages[i], screenerLabel)) {
+        movedThreads++;
       }
-    }
-
-    if (!filterMatched && isContact(sender)) {
-      Logger.log(`${sender} is a contact, moving thread to inbox`);
-
-      movedThreads++;
-
-      thread.removeLabel(screenerLabel);
-      thread.moveToInbox();
+    } catch (error) {
+      Logger.log(`Error processing thread ${thread.getId()}: ${error.message}`);
     }
   });
 
