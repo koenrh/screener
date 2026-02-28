@@ -136,8 +136,10 @@ function isContact(email) {
     return false;
   }
 
+  email = email.toLowerCase();
+
   // Cache lookups for a bit to avoid People API rate limits
-  const cacheKey = email.toLowerCase();
+  const cacheKey = email;
   let cached = null;
 
   try {
