@@ -4,18 +4,37 @@ const ORIGINAL_FROM_HEADER_NAME = "X-Original-From";
 const IN_REPLY_TO_HEADER_NAME = "In-Reply-To";
 const SOURCE_TYPE_CONTACT = "READ_SOURCE_TYPE_CONTACT";
 const CACHE_DURATION_SECONDS = 25 * 60; // 25 minutes
+const RETRY_MAX_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_SECONDS = 1;
 
-function getUnscreenedThreads() {
-  try {
-    return GmailApp.search(`label:${SCREENER_LABEL_NAME} -in:inbox`, 0, BATCH_SIZE);
-  } catch(error) {
-    Logger.log(`Error getting unscreened threads: ${error.message}`);
-    throw error;
+function withRetry(operation, operationName = "", maxAttempts = RETRY_MAX_ATTEMPTS, baseDelaySeconds = RETRY_BASE_DELAY_SECONDS) {
+  const logPrefix = operationName ? `[${operationName}] ` : "";
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      return operation();
+    } catch (error) {
+      if (i === maxAttempts - 1) {
+        Logger.log(`${logPrefix}Max retries (${maxAttempts}) exceeded. Last error: ${error.message}`);
+        throw error;
+      }
+      Logger.log(`${logPrefix}Retry ${i + 1}/${maxAttempts} after error: ${error.message}`);
+      Utilities.sleep(baseDelaySeconds * 2 ** i * 1000);
+    }
   }
 }
 
+function getUnscreenedThreads() {
+  return withRetry(
+    () => GmailApp.search(`label:${SCREENER_LABEL_NAME} -in:inbox`, 0, BATCH_SIZE),
+    "getUnscreenedThreads"
+  );
+}
+
 function processThreads() {
-  const screenerLabel = GmailApp.getUserLabelByName(SCREENER_LABEL_NAME) || GmailApp.createLabel(SCREENER_LABEL_NAME);
+  const screenerLabel = withRetry(
+    () => GmailApp.getUserLabelByName(SCREENER_LABEL_NAME) || GmailApp.createLabel(SCREENER_LABEL_NAME),
+    "getScreenerLabel"
+  );
   const threads = getUnscreenedThreads();
 
   if (!threads || threads.length === 0) {
@@ -87,24 +106,17 @@ function processThreads() {
 }
 
 function getContactsForEmail(email) {
-  try {
-    const searchResponse = People.People.searchContacts({
-      query: email,
-      readMask: "emailAddresses",
-      sources: [SOURCE_TYPE_CONTACT],
-    });
+  const searchResponse = withRetry(
+    () =>
+      People.People.searchContacts({
+        query: email,
+        readMask: "emailAddresses",
+        sources: [SOURCE_TYPE_CONTACT],
+      }),
+    "getContactsForEmail",
+  );
 
-    return searchResponse.results || [];
-
-  } catch (error) {
-    if (error.message.includes("Empty response")) {
-      return [];
-
-    } else {
-      Logger.log(`Error getting contacts for ${email}: ${error.message}`);
-      throw error;
-    }
-  }
+  return searchResponse.results || [];
 }
 
 function extractEmail(addressField) {
