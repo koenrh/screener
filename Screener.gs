@@ -169,7 +169,7 @@ function isContact(email) {
   }
 
   const contact = contacts[0];
-  const contactEmails = contact.person.emailAddresses || [];
+  const contactEmails = contact?.person?.emailAddresses || [];
   const isEmailInContacts = contactEmails.some((e) => email === e.value.toLowerCase());
 
   try {
