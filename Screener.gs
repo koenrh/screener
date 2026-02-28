@@ -30,7 +30,40 @@ function getUnscreenedThreads() {
   );
 }
 
-function processThread(thread, messages, screenerLabel) {
+function applyFilters(thread, firstMessage, lastMessage, screenerLabel) {
+  if (!filters) return false;
+
+  for (const filter of filters) {
+    if (!matchesFilter(filter, firstMessage)) continue;
+
+    Logger.log(`Filter matched for: '${firstMessage.getSubject()}'`);
+
+    if (filter.forwardTo) {
+      if (lastMessage.getHeader(IN_REPLY_TO_HEADER_NAME)) {
+        Logger.log(`'${IN_REPLY_TO_HEADER_NAME}' header found, not forwarding to prevent loop`)
+      } else {
+        Logger.log(`Forwarding to: '${filter.forwardTo}'`);
+        firstMessage.forward(filter.forwardTo);
+      }
+    }
+    if (filter.shouldMarkAsRead) {
+      Logger.log(`Marking thread as read`);
+      thread.markRead();
+    }
+    if (filter.shouldArchive) {
+      Logger.log("Moving thread to archive");
+      thread.moveToArchive();
+    }
+
+    Logger.log(`Removing '${SCREENER_LABEL_NAME}' label`);
+    thread.removeLabel(screenerLabel);
+    return true;
+  }
+
+  return false;
+}
+
+function screenThread(thread, messages, screenerLabel) {
   if (!messages || thread.getMessageCount() === 0) {
     Logger.log(`No messages found for thread ${thread.getId()}`);
     return false;
@@ -43,33 +76,8 @@ function processThread(thread, messages, screenerLabel) {
   const fromField = firstMessage.getHeader(ORIGINAL_FROM_HEADER_NAME) || firstMessage.getFrom();
   const sender = extractEmail(fromField);
 
-  if (filters) {
-    for (const filter of filters) {
-      if (matchesFilter(filter, firstMessage)) {
-        Logger.log(`Filter matched for: '${firstMessage.getSubject()}'`);
-
-        if (filter.forwardTo) {
-          if (lastMessage.getHeader(IN_REPLY_TO_HEADER_NAME)) {
-            Logger.log(`'${IN_REPLY_TO_HEADER_NAME}' header found, not forwarding to prevent loop`)
-          } else {
-            Logger.log(`Forwarding to: '${filter.forwardTo}'`);
-            firstMessage.forward(filter.forwardTo);
-          }
-        }
-        if (filter.shouldMarkAsRead) {
-          Logger.log(`Marking thread as read`);
-          thread.markRead();
-        }
-        if (filter.shouldArchive) {
-          Logger.log("Moving thread to archive");
-          thread.moveToArchive();
-        }
-
-        Logger.log(`Removing '${SCREENER_LABEL_NAME}' label`);
-        thread.removeLabel(screenerLabel);
-        return false;
-      }
-    }
+  if (applyFilters(thread, firstMessage, lastMessage, screenerLabel)) {
+    return false;
   }
 
   if (isContact(sender)) {
@@ -82,11 +90,28 @@ function processThread(thread, messages, screenerLabel) {
   return false;
 }
 
-function processThreads() {
-  const screenerLabel = withRetry(
-    () => GmailApp.getUserLabelByName(SCREENER_LABEL_NAME) || GmailApp.createLabel(SCREENER_LABEL_NAME),
-    "getScreenerLabel"
+function archiveStaleScreenerThreads() {
+  const threads = withRetry(
+    () => GmailApp.search(`label:${SCREENER_LABEL_NAME} in:inbox`, 0, BATCH_SIZE),
+    "archiveStaleScreenerThreads"
   );
+
+  if (!threads || threads.length === 0) {
+    return;
+  }
+
+  Logger.log(`Found ${threads.length} thread(s) in inbox with '${SCREENER_LABEL_NAME}' label, archiving for reprocessing`);
+
+  threads.forEach((thread) => {
+    try {
+      thread.moveToArchive();
+    } catch (error) {
+      Logger.log(`Error archiving thread ${thread.getId()}: ${error.message}`);
+    }
+  });
+}
+
+function screenThreads(screenerLabel) {
   const threads = getUnscreenedThreads();
 
   if (!threads || threads.length === 0) {
@@ -103,7 +128,7 @@ function processThreads() {
 
   threads.forEach((thread, i) => {
     try {
-      if (processThread(thread, allMessages[i], screenerLabel)) {
+      if (screenThread(thread, allMessages[i], screenerLabel)) {
         movedThreads++;
       }
     } catch (error) {
@@ -112,6 +137,16 @@ function processThreads() {
   });
 
   Logger.log(`Screened ${threads.length} threads, moved ${movedThreads} threads to inbox`);
+}
+
+function run() {
+  const screenerLabel = withRetry(
+    () => GmailApp.getUserLabelByName(SCREENER_LABEL_NAME) || GmailApp.createLabel(SCREENER_LABEL_NAME),
+    "getScreenerLabel"
+  );
+
+  archiveStaleScreenerThreads();
+  screenThreads(screenerLabel);
 }
 
 function getContactsForEmail(email) {

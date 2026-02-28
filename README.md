@@ -18,7 +18,7 @@ messages from verified contacts to reach your inbox.
 1. Open [Google Apps Script](https://script.google.com/home)
 1. Create new project
 1. Copy and paste the contents of `Screener.gs` in the editor
-1. Create a time-based trigger that runs `processMessages` every 5 minutes
+1. Create a time-based trigger that executes `run` every 5 minutes
 
 ## Workflow
 
