@@ -59,7 +59,7 @@ function processThreads() {
     }
 
     const firstMessage = messages[0];
-    const lastMessage = messages[messageCount - 1];
+    const lastMessage = messages[messages.length - 1];
 
     // For messages sent to a Google Group, we need to work with the 'original from'
     const fromField = firstMessage.getHeader(ORIGINAL_FROM_HEADER_NAME) || firstMessage.getFrom();
