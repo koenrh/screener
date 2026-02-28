@@ -170,7 +170,7 @@ function isContact(email) {
 
   const contact = contacts[0];
   const contactEmails = contact.person.emailAddresses || [];
-  const isEmailInContacts = contactEmails.some((e) => email.toLowerCase() === e.value.toLowerCase());
+  const isEmailInContacts = contactEmails.some((e) => email === e.value.toLowerCase());
 
   try {
     CacheService.getUserCache().put(cacheKey, isEmailInContacts.toString(), CACHE_DURATION_SECONDS);
