@@ -74,8 +74,8 @@ function processThread(thread, messages, screenerLabel) {
 
   if (isContact(sender)) {
     Logger.log(`${sender} is a contact, moving thread to inbox`);
-    thread.removeLabel(screenerLabel);
     thread.moveToInbox();
+    thread.removeLabel(screenerLabel);
     return true;
   }
 
