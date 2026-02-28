@@ -151,7 +151,6 @@ function isContact(email) {
     }
   } catch (error) {
     Logger.log(`CacheService.get() error for ${email}: ${error.message}`);
-    throw error;
   }
 
   Logger.log(`Checking if ${email} is a contact`);
@@ -164,7 +163,6 @@ function isContact(email) {
       CacheService.getUserCache().put(cacheKey, "false", CACHE_DURATION_SECONDS);
     } catch (error) {
       Logger.log(`CacheService.put() error for ${email}: ${error.message}`);
-      throw error;
     }
 
     return false;
@@ -178,7 +176,6 @@ function isContact(email) {
     CacheService.getUserCache().put(cacheKey, isEmailInContacts.toString(), CACHE_DURATION_SECONDS);
   } catch (error) {
     Logger.log(`CacheService.put() error for ${email}: ${error.message}`);
-    throw error;
   }
 
   return isEmailInContacts;
