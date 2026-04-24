@@ -228,9 +228,10 @@ function isContact(email) {
     return false;
   }
 
-  const contact = contacts[0];
-  const contactEmails = contact?.person?.emailAddresses || [];
-  const isEmailInContacts = contactEmails.some((e) => email === e.value.toLowerCase());
+  const isEmailInContacts = contacts.some((c) => {
+    const addrs = c?.person?.emailAddresses || [];
+    return addrs.some((e) => e.value && email === e.value.toLowerCase());
+  });
 
   try {
     CacheService.getUserCache().put(cacheKey, isEmailInContacts.toString(), CACHE_DURATION_SECONDS);
