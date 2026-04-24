@@ -5,6 +5,7 @@ const IN_REPLY_TO_HEADER_NAME = "In-Reply-To";
 const AUTHENTICATION_RESULTS_HEADER = "Authentication-Results";
 const X_ORIGINAL_AUTHENTICATION_RESULTS_HEADER = "X-Original-Authentication-Results";
 const SOURCE_TYPE_CONTACT = "READ_SOURCE_TYPE_CONTACT";
+const PEOPLE_SEARCH_CONTACTS_PAGE_SIZE = 30; // 30 is the API maximum
 const CACHE_DURATION_SECONDS = 25 * 60; // 25 minutes
 const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_SECONDS = 1;
@@ -175,6 +176,7 @@ function getContactsForEmail(email) {
         query: email,
         readMask: "emailAddresses",
         sources: [SOURCE_TYPE_CONTACT],
+        pageSize: PEOPLE_SEARCH_CONTACTS_PAGE_SIZE,
       }),
     "getContactsForEmail",
   );
