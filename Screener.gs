@@ -4,6 +4,8 @@ const ORIGINAL_FROM_HEADER_NAME = "X-Original-From";
 const IN_REPLY_TO_HEADER_NAME = "In-Reply-To";
 const AUTHENTICATION_RESULTS_HEADER = "Authentication-Results";
 const X_ORIGINAL_AUTHENTICATION_RESULTS_HEADER = "X-Original-Authentication-Results";
+const DMARC_PASS_PATTERN = /(?:^|[\s;])dmarc=pass(?:\s|;|$)/;
+const DMARC_AUTH_HEADERS = [AUTHENTICATION_RESULTS_HEADER, X_ORIGINAL_AUTHENTICATION_RESULTS_HEADER];
 const SOURCE_TYPE_CONTACT = "READ_SOURCE_TYPE_CONTACT";
 const PEOPLE_SEARCH_CONTACTS_PAGE_SIZE = 30; // 30 is the API maximum
 const CACHE_DURATION_SECONDS = 25 * 60; // 25 minutes
@@ -26,12 +28,29 @@ function withRetry(operation, operationName = "", maxAttempts = RETRY_MAX_ATTEMP
   }
 }
 
-// Always require `dmarc=pass` in Authentication-Results and/or X-Original-Authentication-Results (at least one
-// of those headers must contain the pass token; if both are missing or neither has a pass, we do not act).
-function headerHasDmarcPass(headerValue) {
-  const s = (headerValue && String(headerValue).trim()) || "";
-  if (!s) return false;
-  return /(?:^|[\s;])dmarc=pass(?:\s|;|$)/.test(s.toLowerCase());
+// Relayed messages can have multiple authentication result headers. Gmail adds dmarc=pass at the top,
+// but getHeader() returns the last one, which may be an upstream dmarc=none. So we use the Gmail API instead.
+function messageHasDmarcPass(message) {
+  const response = withRetry(
+    () =>
+      Gmail.Users.Messages.get("me", message.getId(), {
+        format: "METADATA",
+        metadataHeaders: DMARC_AUTH_HEADERS,
+      }),
+    "messageHasDmarcPass"
+  );
+  const headers = response.payload?.headers || [];
+
+  for (const headerName of DMARC_AUTH_HEADERS) {
+    const headerNameLower = headerName.toLowerCase();
+    const match = headers.find((header) => header.name.toLowerCase() === headerNameLower);
+    const value = (match?.value && String(match.value).trim()) || "";
+    if (value && DMARC_PASS_PATTERN.test(value.toLowerCase())) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function getUnscreenedThreads() {
@@ -83,9 +102,7 @@ function screenThread(thread, messages, screenerLabel) {
   const firstMessage = messages[0];
   const lastMessage = messages[messages.length - 1];
 
-  const authResults = firstMessage.getHeader(AUTHENTICATION_RESULTS_HEADER) || "";
-  const originalAuthResults = firstMessage.getHeader(X_ORIGINAL_AUTHENTICATION_RESULTS_HEADER) || "";
-  if (!headerHasDmarcPass(authResults) && !headerHasDmarcPass(originalAuthResults)) {
+  if (!messageHasDmarcPass(firstMessage)) {
     Logger.log(
       `No dmarc=pass in ${AUTHENTICATION_RESULTS_HEADER} or ${X_ORIGINAL_AUTHENTICATION_RESULTS_HEADER} for first message in thread ${thread.getId()}`
     );
