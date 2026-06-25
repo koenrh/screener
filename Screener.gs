@@ -1,7 +1,7 @@
 const SCREENER_LABEL_NAME = "Screener";
 const BATCH_SIZE = 100;
-const ORIGINAL_FROM_HEADER_NAME = "X-Original-From";
-const IN_REPLY_TO_HEADER_NAME = "In-Reply-To";
+const ORIGINAL_FROM_HEADER = "X-Original-From";
+const IN_REPLY_TO_HEADER = "In-Reply-To";
 const AUTHENTICATION_RESULTS_HEADER = "Authentication-Results";
 const X_ORIGINAL_AUTHENTICATION_RESULTS_HEADER = "X-Original-Authentication-Results";
 const DMARC_PASS_PATTERN = /(?:^|[\s;])dmarc=pass(?:\s|;|$)/;
@@ -69,8 +69,8 @@ function applyFilters(thread, firstMessage, lastMessage, screenerLabel) {
     Logger.log(`Filter matched for: '${firstMessage.getSubject()}'`);
 
     if (filter.forwardTo) {
-      if (lastMessage.getHeader(IN_REPLY_TO_HEADER_NAME)) {
-        Logger.log(`'${IN_REPLY_TO_HEADER_NAME}' header found, not forwarding to prevent loop`)
+      if (lastMessage.getHeader(IN_REPLY_TO_HEADER)) {
+        Logger.log(`'${IN_REPLY_TO_HEADER}' header found, not forwarding to prevent loop`)
       } else {
         Logger.log(`Forwarding to: '${filter.forwardTo}'`);
         firstMessage.forward(filter.forwardTo);
@@ -110,7 +110,7 @@ function screenThread(thread, messages, screenerLabel) {
   }
 
   // For messages sent to a Google Group, we need to work with the 'original from'
-  const fromField = firstMessage.getHeader(ORIGINAL_FROM_HEADER_NAME) || firstMessage.getFrom();
+  const fromField = firstMessage.getHeader(ORIGINAL_FROM_HEADER) || firstMessage.getFrom();
   const sender = extractEmail(fromField);
 
   if (applyFilters(thread, firstMessage, lastMessage, screenerLabel)) {

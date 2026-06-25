@@ -34,7 +34,7 @@ function matchesFilter(filter, message) {
   }
 
   const toField = message.getTo();
-  const fromField = message.getHeader(ORIGINAL_FROM_HEADER_NAME) || message.getFrom();
+  const fromField = message.getHeader(ORIGINAL_FROM_HEADER) || message.getFrom();
   const fromEmail = extractEmail(fromField);
   const subject = message.getSubject();
 
