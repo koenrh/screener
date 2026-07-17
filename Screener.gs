@@ -1,7 +1,6 @@
 const SCREENER_LABEL_NAME = "Screener";
 const BATCH_SIZE = 100;
 const ORIGINAL_FROM_HEADER = "X-Original-From";
-const IN_REPLY_TO_HEADER = "In-Reply-To";
 const AUTHENTICATION_RESULTS_HEADER = "Authentication-Results";
 const X_ORIGINAL_AUTHENTICATION_RESULTS_HEADER = "X-Original-Authentication-Results";
 const DMARC_PASS_PATTERN = /(?:^|[\s;])dmarc=pass(?:\s|;|$)/;
@@ -129,7 +128,7 @@ function matchesWildcard(pattern, text) {
   return true;
 }
 
-function applyFilters(thread, firstMessage, lastMessage, screenerLabel) {
+function applyFilters(thread, firstMessage, screenerLabel) {
   if (!filters) return false;
 
   for (const filter of filters) {
@@ -138,8 +137,8 @@ function applyFilters(thread, firstMessage, lastMessage, screenerLabel) {
     Logger.log(`Filter matched for: '${firstMessage.getSubject()}'`);
 
     if (filter.forwardTo) {
-      if (lastMessage.getHeader(IN_REPLY_TO_HEADER)) {
-        Logger.log(`'${IN_REPLY_TO_HEADER}' header found, not forwarding to prevent loop`)
+      if (thread.getMessageCount() > 1) {
+        Logger.log("Thread has replies, not re-forwarding to prevent loop");
       } else {
         Logger.log(`Forwarding to: '${filter.forwardTo}'`);
         firstMessage.forward(filter.forwardTo);
@@ -169,7 +168,6 @@ function screenThread(thread, messages, screenerLabel) {
   }
 
   const firstMessage = messages[0];
-  const lastMessage = messages[messages.length - 1];
 
   if (!messageHasDmarcPass(firstMessage)) {
     Logger.log(
@@ -182,7 +180,7 @@ function screenThread(thread, messages, screenerLabel) {
   const fromField = firstMessage.getHeader(ORIGINAL_FROM_HEADER) || firstMessage.getFrom();
   const sender = extractEmail(fromField);
 
-  if (applyFilters(thread, firstMessage, lastMessage, screenerLabel)) {
+  if (applyFilters(thread, firstMessage, screenerLabel)) {
     return false;
   }
 
