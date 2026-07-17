@@ -27,25 +27,36 @@ function withRetry(operation, operationName = "", maxAttempts = RETRY_MAX_ATTEMP
   }
 }
 
-// Relayed messages can have multiple authentication result headers. Gmail adds dmarc=pass at the top,
-// but getHeader() returns the last one, which may be an upstream dmarc=none. So we use the Gmail API instead.
-function messageHasDmarcPass(message) {
+// Relayed messages can have multiple instances of the same header. GmailApp getHeader()
+// returns only one value (often the last), so we use the Gmail API to read all of them.
+function getMessageHeaders(message, headerNames) {
   const response = withRetry(
     () =>
       Gmail.Users.Messages.get("me", message.getId(), {
         format: "METADATA",
-        metadataHeaders: DMARC_AUTH_HEADERS,
+        metadataHeaders: headerNames,
       }),
-    "messageHasDmarcPass"
+    "getMessageHeaders"
   );
-  const headers = response.payload?.headers || [];
+  return response.payload?.headers || [];
+}
+
+function headerValues(headers, headerName) {
+  const headerNameLower = headerName.toLowerCase();
+  return headers
+    .filter((header) => header.name.toLowerCase() === headerNameLower)
+    .map((header) => (header?.value && String(header.value).trim()) || "")
+    .filter(Boolean);
+}
+
+function messageHasDmarcPass(message) {
+  const headers = getMessageHeaders(message, DMARC_AUTH_HEADERS);
 
   for (const headerName of DMARC_AUTH_HEADERS) {
-    const headerNameLower = headerName.toLowerCase();
-    const match = headers.find((header) => header.name.toLowerCase() === headerNameLower);
-    const value = (match?.value && String(match.value).trim()) || "";
-    if (value && DMARC_PASS_PATTERN.test(value.toLowerCase())) {
-      return true;
+    for (const value of headerValues(headers, headerName)) {
+      if (DMARC_PASS_PATTERN.test(value.toLowerCase())) {
+        return true;
+      }
     }
   }
 
@@ -57,6 +68,22 @@ function getUnscreenedThreads() {
     () => GmailApp.search(`label:${SCREENER_LABEL_NAME} -in:inbox`, 0, BATCH_SIZE),
     "getUnscreenedThreads"
   );
+}
+
+function matchesFilterHeaders(filterHeaders, message) {
+  const headerNames = Object.keys(filterHeaders);
+  if (headerNames.length === 0) return true;
+
+  const headers = getMessageHeaders(message, headerNames);
+
+  for (const headerName of headerNames) {
+    const values = headerValues(headers, headerName);
+    if (!values.some((value) => matchesWildcard(filterHeaders[headerName], value))) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function matchesFilter(filter, message) {
@@ -82,12 +109,8 @@ function matchesFilter(filter, message) {
     return false;
   }
 
-  if (filter.headers) {
-    for (const header in filter.headers) {
-      if (!matchesWildcard(filter.headers[header], message.getHeader(header))) {
-        return false;
-      }
-    }
+  if (filter.headers && !matchesFilterHeaders(filter.headers, message)) {
+    return false;
   }
 
   return true;
