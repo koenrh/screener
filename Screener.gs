@@ -129,8 +129,6 @@ function matchesWildcard(pattern, text) {
 }
 
 function applyFilters(thread, firstMessage, screenerLabel) {
-  if (!filters) return false;
-
   for (const filter of filters) {
     if (!matchesFilter(filter, firstMessage)) continue;
 
