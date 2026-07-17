@@ -10,6 +10,9 @@ const PEOPLE_SEARCH_CONTACTS_PAGE_SIZE = 30; // 30 is the API maximum
 const CACHE_DURATION_SECONDS = 25 * 60; // 25 minutes
 const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_SECONDS = 1;
+const SCREEN_RESULT_INBOX = "inbox";
+const SCREEN_RESULT_FILTERED = "filtered";
+const SCREEN_RESULT_SKIPPED = "skipped";
 
 function withRetry(operation, operationName = "", maxAttempts = RETRY_MAX_ATTEMPTS, baseDelaySeconds = RETRY_BASE_DELAY_SECONDS) {
   const logPrefix = operationName ? `[${operationName}] ` : "";
@@ -185,7 +188,7 @@ function applyFilters(thread, firstMessage, screenerLabel) {
 function screenThread(thread, messages, screenerLabel) {
   if (!messages || thread.getMessageCount() === 0) {
     Logger.log(`No messages found for thread ${thread.getId()}`);
-    return false;
+    return SCREEN_RESULT_SKIPPED;
   }
 
   const firstMessage = messages[0];
@@ -194,7 +197,7 @@ function screenThread(thread, messages, screenerLabel) {
     Logger.log(
       `No dmarc=pass in ${AUTHENTICATION_RESULTS_HEADER} or ${X_ORIGINAL_AUTHENTICATION_RESULTS_HEADER} for first message in thread ${thread.getId()}`
     );
-    return false;
+    return SCREEN_RESULT_SKIPPED;
   }
 
   // For messages sent to a Google Group, we need to work with the 'original from'
@@ -202,17 +205,17 @@ function screenThread(thread, messages, screenerLabel) {
   const sender = extractEmail(fromField);
 
   if (applyFilters(thread, firstMessage, screenerLabel)) {
-    return false;
+    return SCREEN_RESULT_FILTERED;
   }
 
   if (isContact(sender)) {
     Logger.log(`${sender} is a contact, moving thread to inbox`);
     thread.moveToInbox();
     thread.removeLabel(screenerLabel);
-    return true;
+    return SCREEN_RESULT_INBOX;
   }
 
-  return false;
+  return SCREEN_RESULT_SKIPPED;
 }
 
 function archiveStaleScreenerThreads() {
@@ -249,19 +252,25 @@ function screenThreads(screenerLabel) {
     "getMessagesForThreads"
   );
 
-  let movedThreads = 0;
+  let movedToInbox = 0;
+  let filtered = 0;
 
   threads.forEach((thread, i) => {
     try {
-      if (screenThread(thread, allMessages[i], screenerLabel)) {
-        movedThreads++;
+      const result = screenThread(thread, allMessages[i], screenerLabel);
+      if (result === SCREEN_RESULT_INBOX) {
+        movedToInbox++;
+      } else if (result === SCREEN_RESULT_FILTERED) {
+        filtered++;
       }
     } catch (error) {
       Logger.log(`Error processing thread ${thread.getId()}: ${error.message}`);
     }
   });
 
-  Logger.log(`Screened ${threads.length} threads, moved ${movedThreads} threads to inbox`);
+  Logger.log(
+    `Screened ${threads.length} threads, moved ${movedToInbox} to inbox, filtered ${filtered}`
+  );
 }
 
 function run() {
